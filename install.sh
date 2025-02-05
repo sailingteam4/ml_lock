@@ -39,8 +39,17 @@ if [ -d "$source_dir" ]; then
         cp "$HOME/.config/ml_lock/config.json" "/tmp/ml_lock_config_backup.json"
     fi
     
-    # Update repository
+    # Update repository with stash handling
     cd "$source_dir"
+    
+    # Check for local changes
+    if ! git diff-index --quiet HEAD --; then
+        echo "Local changes detected, stashing them..."
+        git stash
+        local_changes=true
+    fi
+    
+    # Update from remote
     git fetch
     current_hash=$(git rev-parse HEAD)
     remote_hash=$(git rev-parse @{u})
@@ -48,9 +57,27 @@ if [ -d "$source_dir" ]; then
     if [ "$current_hash" != "$remote_hash" ]; then
         echo "Updates available. Downloading..."
         git pull
+        
+        # Restore local changes if they were stashed
+        if [ "$local_changes" = true ]; then
+            echo "Restoring local changes..."
+            git stash pop
+            
+            # Check for conflicts
+            if git diff --name-only --diff-filter=U | grep -q .; then
+                echo -e "${RED}Warning: Conflicts detected. Your local changes have been preserved in stash.${NC}"
+                git reset --hard HEAD
+                echo "You can find your local changes using 'cd $source_dir && git stash list'"
+            fi
+        fi
+        
         echo -e "${GREEN}Updated to latest version${NC}"
     else
         echo -e "${GREEN}Already at latest version${NC}"
+        # Restore stashed changes if no update was needed
+        if [ "$local_changes" = true ]; then
+            git stash pop
+        fi
     fi
     
     # Restore config
