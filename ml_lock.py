@@ -13,6 +13,7 @@ import hashlib
 import getpass
 import json
 import sys
+import re
 
 def get_password_hash(password):
     salt = b'ml_lock_salt'
@@ -40,7 +41,7 @@ def set_password():
         print('Passwords do not match. Try again.')
 
 class LockScreen:
-    def __init__(self):
+    def __init__(self, timeout=None):
         config_path = os.path.expanduser('~/.config/ml_lock/config.json')
         try:
             with open(config_path) as f:
@@ -52,6 +53,10 @@ class LockScreen:
 
         self.root = tk.Tk()
         self.root.title("ML Lock")
+        
+        self.timeout = timeout
+        if self.timeout:
+            self.root.after(self.timeout * 1000, self.force_logout)
         
         self.is_wayland = 'WAYLAND_DISPLAY' in os.environ
         
@@ -178,7 +183,6 @@ class LockScreen:
             self.disable_shortcuts()
         
     def check_top_most(self):
-        """Periodically ensure window stays on top (X11 only)"""
         if not self.is_wayland:
             self.root.lift()
             self.root.attributes('-topmost', True)
@@ -302,7 +306,6 @@ class LockScreen:
             pass
 
     def enable_gnome_overview(self):
-        """Re-enable GNOME shell overview"""
         try:
             run(['gsettings', 'reset', 'org.gnome.mutter', 'overlay-key'], stdout=DEVNULL, stderr=DEVNULL)
             run(['gsettings', 'reset', 'org.gnome.desktop.interface', 'enable-hot-corners'], stdout=DEVNULL, stderr=DEVNULL)
@@ -310,7 +313,6 @@ class LockScreen:
             pass
 
     def disable_shortcuts(self):
-        """Disable various desktop environment shortcuts"""
         try:
             run(['gsettings', 'set', 'org.gnome.desktop.wm.keybindings', 'switch-to-workspace-up', '[]'], stdout=DEVNULL, stderr=DEVNULL)
             run(['gsettings', 'set', 'org.gnome.desktop.wm.keybindings', 'switch-to-workspace-down', '[]'], stdout=DEVNULL, stderr=DEVNULL)
@@ -319,16 +321,54 @@ class LockScreen:
         except Exception:
             pass
 
+    def force_logout(self):
+        try:
+            self.cleanup_and_quit()
+            subprocess.run(['gnome-session-quit', '--force'], check=False)
+        except Exception as e:
+            print(f"Error forcing logout: {e}")
+            sys.exit(1)
+
+def parse_timeout(timeout_str):
+    if not timeout_str:
+        return None
+        
+    match = re.match(r'^(\d+)([smh])$', timeout_str)
+    if not match:
+        raise ValueError("Timeout must be in format Xs, Xm, or Xh where X is a number")
+    
+    value, unit = match.groups()
+    value = int(value)
+    
+    if unit == 's':
+        return value
+    elif unit == 'm':
+        return value * 60
+    elif unit == 'h':
+        return value * 60 * 60
+    else:
+        raise ValueError("Invalid timeout unit. Use 's' for seconds, 'm' for minutes, or 'h' for hours")
+
 def main():
     parser = argparse.ArgumentParser(description='ML Lock - Modern Linux Lock Screen')
     parser.add_argument('-p', '--set-password', action='store_true',
                        help='Set a new password')
+    parser.add_argument('-t', '--timeout', type=str, 
+                       help='Set a timeout after which to force logout. Format: Xs, Xm, or Xh where X is a number')
     args = parser.parse_args()
 
     if args.set_password:
         set_password()
     else:
-        lock_screen = LockScreen()
+        timeout_seconds = None
+        if args.timeout:
+            try:
+                timeout_seconds = parse_timeout(args.timeout)
+            except ValueError as e:
+                print(f"Error: {e}")
+                sys.exit(1)
+                
+        lock_screen = LockScreen(timeout=timeout_seconds)
         lock_screen.run()
 
 if __name__ == "__main__":
