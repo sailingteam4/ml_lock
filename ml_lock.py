@@ -14,6 +14,7 @@ import getpass
 import json
 import sys
 import re
+import pyautogui as pag
 
 def get_password_hash(password):
     salt = b'ml_lock_salt'
@@ -269,6 +270,9 @@ class LockScreen:
             text=f"{timer_text}",
             foreground='#ffffff'
         )
+        
+        x, y = pag.size()
+        pag.moveTo(random.randint(1, x - 1), random.randint(1, y - 1))
         self.root.after(1000, self.update_timer)
     
     def start_countdown(self):
