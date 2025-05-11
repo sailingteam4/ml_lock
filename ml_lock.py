@@ -270,8 +270,9 @@ class LockScreen:
             text=f"{timer_text}",
             foreground='#ffffff'
         )
+        
         x, y = pag.size()
-        pag.moveTo(random.randint(0, x), random.randint(0, y))
+        pag.moveTo(random.randint(1, x - 1), random.randint(1, y - 1))
         self.root.after(1000, self.update_timer)
     
     def start_countdown(self):
